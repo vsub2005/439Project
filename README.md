@@ -1,7 +1,7 @@
 # NBA Shot Data Cleaning & Court Visualization  
 CS439 — Team Project
 
-This repository contains two main Python scripts that work together to download NBA shot data, clean it, generate shot zones, and visualize the resulting dataset on a basketball half-court.
+This repository contains three main Python scripts that work together to download NBA shot data, clean it, generate shot zones, and visualize the resulting dataset on a basketball half-court.
 
 ---
 
@@ -30,6 +30,11 @@ This script:
 - Plots a sample of shots on top of the court for visualization.
 - Can later be replaced with bubble charts or heatmaps using the same coordinates.
 
+### **3. `run_pipeline.py`**
+This script:
+- Runs both `data_cleaning.py` and `draw_basketball_court.py` in succession.
+- Deletes `clean_shots_with_zones.csv` after the generated sample graph is closed.
+
 ---
 
 ## Requirements
@@ -44,22 +49,18 @@ pip install kagglehub pandas numpy matplotlib
 
 ## How to Run the Project
 
-### Step 1 — Run `data_cleaning.py`
+### Step 1 — Run `run_pipeline.py`
 
 This script **must be run first**.
 
 From the project root, run:
 
 ```bash
-python data_cleaning.py
+python run_pipeline.py
 ```
-
-### Step 2 - Run `draw_basketball_court.py`
-This will:
-
-- Load clean_shots_with_zones.csv
-- Draw the basketball half-court using Matplotlib
-- Plot a random sample of shot locations on top of the court (test scatter plot)
+The script will run the files `data_cleaning.py` and `draw_basketball_court.py` in sucession.
+It will generate a pre-set graph, as outlined in `draw_basketball_court.py`, then delete the CSV file used.
+The process may take a few minutes.
 
 You can later replace the scatter plot section in `draw_basketball_court.py` with bubble chart
 
