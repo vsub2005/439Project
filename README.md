@@ -33,7 +33,8 @@ This script:
 ### **3. `run_pipeline.py`**
 This script:
 - Runs both `data_cleaning.py` and `draw_basketball_court.py` in succession.
-- Deletes `clean_shots_with_zones.csv` after the generated sample graph is closed.
+- If `clean_shots_with_zones.csv` exists, `data_cleaning.py` is not run.
+- Asks in the command line, after the pre-set graph is closed, whether `clean_shots_with_zones.csv` should be deleted or not.
 
 ---
 
@@ -42,7 +43,7 @@ This script:
 Install dependencies:
 
 ```bash
-pip install kagglehub pandas numpy matplotlib
+pip install kagglehub pandas matplotlib
 ```
 
 ---
@@ -59,8 +60,12 @@ From the project root, run:
 python run_pipeline.py
 ```
 The script will run the files `data_cleaning.py` and `draw_basketball_court.py` in sucession.
-It will generate a pre-set graph, as outlined in `draw_basketball_court.py`, then delete the CSV file used.
+It will generate a pre-set graph, as outlined in `draw_basketball_court.py`.
 The process may take a few minutes.
+
+If `clean_shots_with_zones.csv` already exists, `data_cleaning.py` is not run. Additionally, the program
+will ask in the command line, after the pre-set graph is closed, whether `clean_shots_with_zones.csv` should
+be deleted or not.
 
 You can later replace the scatter plot section in `draw_basketball_court.py` with bubble chart
 

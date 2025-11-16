@@ -1,8 +1,6 @@
 import kagglehub
 import pandas as pd
-import numpy as np
 import os
-import matplotlib.pyplot as plt
 
 # load in data
 path = kagglehub.dataset_download("mexwell/nba-shots")
