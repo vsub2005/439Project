@@ -27,8 +27,7 @@ This script:
 - Uses the same coordinate system as the dataset:
   - `LOC_X` ranges from **-50 to 50** (left → right)
   - `LOC_Y` ranges from **0 to 50** (baseline → half-court line)
-- Plots a sample of shots on top of the court for visualization.
-- Can later be replaced with bubble charts or heatmaps using the same coordinates.
+- Plots a bubble chart with bubbles sized based on shot frequency.
 
 ### **3. `run_pipeline.py`**
 This script:
@@ -60,13 +59,11 @@ From the project root, run:
 python run_pipeline.py
 ```
 The script will run the files `data_cleaning.py` and `draw_basketball_court.py` in sucession.
-It will generate a pre-set graph, as outlined in `draw_basketball_court.py`.
+It will generate a graph as outlined in `draw_basketball_court.py`.
 The process may take a few minutes.
 
 If `clean_shots_with_zones.csv` already exists, `data_cleaning.py` is not run. Additionally, the program
 will ask in the command line, after the pre-set graph is closed, whether `clean_shots_with_zones.csv` should
 be deleted or not.
-
-You can later replace the scatter plot section in `draw_basketball_court.py` with bubble chart
 
 ---

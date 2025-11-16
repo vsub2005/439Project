@@ -75,24 +75,35 @@ def main():
     # Load cleaned data
     df = pd.read_csv(csv_path)
 
-    # NOTE: BELOW IS JUST A TEST SCATTER PLOT OF ALL THE POINTS ---- CAN DELETE THIS AND REPLACE WITH BUBBLE CHART CODE
-    sample = df.sample(20000, random_state=0)
+    # Aggregate shots by (LOC_X, LOC_Y) → how many shots from each exact location
+    grouped = (
+        df.groupby(["LOC_X", "LOC_Y"])
+          .size()
+          .reset_index(name="count")
+    )
 
     fig, ax = plt.subplots(figsize=(8, 6))
     draw_half_court(ax)
 
-    # Scatter shots in the same coordinate system as the court
+    # Scale counts into reasonable bubble sizes
+    max_count = grouped["count"].max()
+    min_size = 1   # smallest bubble size
+    max_size = 25  # largest bubble size
+
+    sizes = min_size + (grouped["count"] / max_count) * (max_size - min_size)
+
+    # Bubble chart: each unique (LOC_X, LOC_Y) is a bubble,
+    # sized by how many shots came from that spot.
     ax.scatter(
-        sample["LOC_X"],
-        sample["LOC_Y"],
-        s=3,
-        alpha=0.3,
+        grouped["LOC_X"],
+        grouped["LOC_Y"],
+        s=sizes,
+        alpha=0.1,
         zorder=10,
     )
 
     plt.tight_layout()
     plt.show()
-
 
 if __name__ == "__main__":
     main()
