@@ -82,6 +82,13 @@ def main():
           .reset_index(name="count")
     )
 
+    fg = (
+        df.groupby(["LOC_X", "LOC_Y"])["SHOT_MADE"]
+        .mean()
+        .reset_index(name="fg")
+    )
+    grouped = grouped.merge(fg, on=["LOC_X", "LOC_Y"])
+
     fig, ax = plt.subplots(figsize=(8, 6))
     draw_half_court(ax)
 
@@ -94,13 +101,17 @@ def main():
 
     # Bubble chart: each unique (LOC_X, LOC_Y) is a bubble,
     # sized by how many shots came from that spot.
-    ax.scatter(
+    scatter = ax.scatter(
         grouped["LOC_X"],
         grouped["LOC_Y"],
         s=sizes,
-        alpha=0.1,
+        c=grouped["fg"],
+        cmap="viridis",
+        alpha=0.7,
         zorder=10,
     )
+    cbar = plt.colorbar(scatter, ax=ax)
+    cbar.set_label("Field Goal Percentage (FG%)")
 
     plt.tight_layout()
     plt.show()
