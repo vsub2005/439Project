@@ -188,12 +188,14 @@ class TeamSelector:
         unique_quarters = sorted(df["QUARTER"].dropna().unique().tolist())
         # Store quarter labels as strings for the dropdown
         self.quarters = ["All Quarters"] + [str(q) for q in unique_quarters]
-
+        #get all positions and position groups
+        unique_positions = sorted(df["POSITION_GROUP"].unique().tolist()) + sorted(df["POSITION"].unique().tolist())
+        self.positions = ["Positions"] + [str(q) for q in unique_positions]
         # Keep track of current selections so the two dropdowns
         # can work together
         self.current_team = "All Teams"
         self.current_quarter = "All Quarters"
-
+        self.current_position = "Positions"
         self.scatter = None
         self.cbar = None
         self.cbar_ax = None
@@ -210,7 +212,7 @@ class TeamSelector:
     def create_dropdowns(self):
         """Create both the team and quarter dropdown menus."""
         # Team dropdown button position at top
-        ax_team = plt.axes([0.35, 0.92, 0.3, 0.04])
+        ax_team = plt.axes([0.05, 0.92, 0.25, 0.04])
         self.team_dropdown = DropdownMenu(
             ax_team,
             self.teams,
@@ -218,14 +220,19 @@ class TeamSelector:
         )
 
         # Quarter dropdown just below the team dropdown
-        ax_quarter = plt.axes([0.35, 0.86, 0.3, 0.04])
+        ax_quarter = plt.axes([0.35, 0.92, 0.25, 0.04])
         self.quarter_dropdown = DropdownMenu(
             ax_quarter,
             self.quarters,
             lambda quarter: self.update_plot(quarter=quarter),
         )
-
-    def update_plot(self, team_name=None, quarter=None):
+        ax_pos = plt.axes([0.65, 0.92, 0.25, 0.04])
+        self.pos_dropdown = DropdownMenu(
+            ax_pos,
+            self.positions,
+            lambda position: self.update_plot(position=position),
+        )
+    def update_plot(self, team_name=None, quarter=None, position = None):
         """Update the shot chart based on the selected team and quarter.
 
         Both dropdown menus call this function; whichever dropdown changes
@@ -236,7 +243,8 @@ class TeamSelector:
             self.current_team = team_name
         if quarter is not None:
             self.current_quarter = quarter
-
+        if position is not None:
+            self.current_position = position
         # Clear the main axis
         self.ax.clear()
 
@@ -259,6 +267,11 @@ class TeamSelector:
             filtered_df = filtered_df[
                 filtered_df["QUARTER"].astype(str) == self.current_quarter
             ]
+        if self.current_position != "Positions":
+            if self.current_position in filtered_df["POSITION_GROUP"].astype(str).unique():
+                filtered_df = filtered_df[filtered_df["POSITION_GROUP"].astype(str) == self.current_position]
+            else:
+                filtered_df = filtered_df[filtered_df["POSITION"].astype(str) == self.current_position]
 
         # Aggregate shots by (LOC_X, LOC_Y)
         grouped = (
@@ -311,8 +324,9 @@ class TeamSelector:
             if self.current_quarter == "All Quarters"
             else f"Quarter {self.current_quarter}"
         )
+        title_pos = ("Positions" if self.current_position == "Positions" else self.current_position)
         self.ax.set_title(
-            f"Shot Chart: {title_team} - {title_quarter}",
+            f"Shot Chart: {title_team} - {title_pos} - {title_quarter}",
             fontsize=12,
             weight="bold",
             pad=30,
@@ -339,5 +353,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
