@@ -27,7 +27,8 @@ print(df.info())
 keep_cols = [
     "SEASON_1", "TEAM_ID", "TEAM_NAME", "PLAYER_ID", "POSITION", 
     "HOME_TEAM", "AWAY_TEAM", "SHOT_MADE", "ACTION_TYPE", "SHOT_TYPE",
-    "BASIC_ZONE", "ZONE_NAME", "ZONE_ABB", "ZONE_RANGE", "LOC_X", "LOC_Y"
+    "BASIC_ZONE", "ZONE_NAME", "ZONE_ABB", "ZONE_RANGE", "LOC_X", "LOC_Y",
+    "QUARTER", "MINS_LEFT", "SECS_LEFT"
 ]
 df_cleaned = df[keep_cols].copy()
 
