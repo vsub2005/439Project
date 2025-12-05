@@ -180,64 +180,107 @@ class TeamSelector:
         self.df = df
         self.fig = fig
         self.ax = ax
-        
+
         # Get unique teams and add "All Teams" option
         self.teams = ["All Teams"] + sorted(df["TEAM_NAME"].unique().tolist())
+
+        # Get unique quarters and add "All Quarters" option
+        unique_quarters = sorted(df["QUARTER"].dropna().unique().tolist())
+        # Store quarter labels as strings for the dropdown
+        self.quarters = ["All Quarters"] + [str(q) for q in unique_quarters]
+
+        # Keep track of current selections so the two dropdowns
+        # can work together
+        self.current_team = "All Teams"
+        self.current_quarter = "All Quarters"
+
         self.scatter = None
         self.cbar = None
         self.cbar_ax = None
-        
+
         # Will store position after first colorbar creation
         self.stable_position = None
-        
-        # Create dropdown
-        self.create_dropdown()
-        
-        # Initial plot
-        self.update_plot("All Teams")
-    
-    def create_dropdown(self):
-        # Dropdown button position at top
-        ax_dropdown = plt.axes([0.35, 0.92, 0.3, 0.04])
-        self.dropdown = DropdownMenu(ax_dropdown, self.teams, self.update_plot)
-    
-    def update_plot(self, team_name):
+
+        # Create dropdowns
+        self.create_dropdowns()
+
+        # Initial plot with default selections
+        self.update_plot()
+
+    def create_dropdowns(self):
+        """Create both the team and quarter dropdown menus."""
+        # Team dropdown button position at top
+        ax_team = plt.axes([0.35, 0.92, 0.3, 0.04])
+        self.team_dropdown = DropdownMenu(
+            ax_team,
+            self.teams,
+            lambda team_name: self.update_plot(team_name=team_name),
+        )
+
+        # Quarter dropdown just below the team dropdown
+        ax_quarter = plt.axes([0.35, 0.86, 0.3, 0.04])
+        self.quarter_dropdown = DropdownMenu(
+            ax_quarter,
+            self.quarters,
+            lambda quarter: self.update_plot(quarter=quarter),
+        )
+
+    def update_plot(self, team_name=None, quarter=None):
+        """Update the shot chart based on the selected team and quarter.
+
+        Both dropdown menus call this function; whichever dropdown changes
+        passes its new value, and we keep the other setting unchanged.
+        """
+        # Update current selections if new values were provided
+        if team_name is not None:
+            self.current_team = team_name
+        if quarter is not None:
+            self.current_quarter = quarter
+
         # Clear the main axis
         self.ax.clear()
-        
+
         # Restore stable position if we have one (after first colorbar creation)
         if self.stable_position is not None:
             self.ax.set_position(self.stable_position)
-        
+
         draw_half_court(self.ax)
-        
-        # Filter data
-        if team_name == "All Teams":
-            filtered_df = self.df
-        else:
-            filtered_df = self.df[self.df["TEAM_NAME"] == team_name]
-        
+
+        # Start from full dataframe and apply filters for both dropdowns
+        filtered_df = self.df
+
+        # Filter by team
+        if self.current_team != "All Teams":
+            filtered_df = filtered_df[filtered_df["TEAM_NAME"] == self.current_team]
+
+        # Filter by quarter
+        if self.current_quarter != "All Quarters":
+            # Compare as string
+            filtered_df = filtered_df[
+                filtered_df["QUARTER"].astype(str) == self.current_quarter
+            ]
+
         # Aggregate shots by (LOC_X, LOC_Y)
         grouped = (
             filtered_df.groupby(["LOC_X", "LOC_Y"])
             .size()
             .reset_index(name="count")
         )
-        
+
         fg = (
             filtered_df.groupby(["LOC_X", "LOC_Y"])["SHOT_MADE"]
             .mean()
             .reset_index(name="fg")
         )
         grouped = grouped.merge(fg, on=["LOC_X", "LOC_Y"])
-        
+
         # Scale counts into reasonable bubble sizes
         if len(grouped) > 0:
             max_count = grouped["count"].max()
             min_size = 1
             max_size = 25
             sizes = min_size + (grouped["count"] / max_count) * (max_size - min_size)
-            
+
             # Bubble chart
             self.scatter = self.ax.scatter(
                 grouped["LOC_X"],
@@ -248,9 +291,9 @@ class TeamSelector:
                 alpha=0.7,
                 zorder=10,
                 vmin=0,
-                vmax=1
+                vmax=1,
             )
-            
+
             # Create or update colorbar
             if self.cbar is None:
                 self.cbar = plt.colorbar(self.scatter, ax=self.ax)
@@ -260,8 +303,20 @@ class TeamSelector:
             else:
                 # Update existing colorbar with new data
                 self.cbar.update_normal(self.scatter)
-        
-        self.ax.set_title(f"Shot Chart: {team_name}", fontsize=12, weight='bold', pad=30)
+
+        # Build a descriptive title reflecting both filters
+        title_team = self.current_team
+        title_quarter = (
+            "All Quarters"
+            if self.current_quarter == "All Quarters"
+            else f"Quarter {self.current_quarter}"
+        )
+        self.ax.set_title(
+            f"Shot Chart: {title_team} - {title_quarter}",
+            fontsize=12,
+            weight="bold",
+            pad=30,
+        )
         self.fig.canvas.draw_idle()
 
 

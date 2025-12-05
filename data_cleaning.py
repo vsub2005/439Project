@@ -35,6 +35,9 @@ df_cleaned = df[keep_cols].copy()
 # 7930 missing values - all in POSITION column
 df_cleaned = df_cleaned.dropna()
 
+# Make QUARTER values greater than 4 into value "OT"
+df_cleaned["QUARTER"] = df_cleaned["QUARTER"].apply(lambda x: x if x <= 4 else "OT")
+
 # removed all rows with x or y values outside 0-50 range (mainly back court shots)
 df_cleaned = df_cleaned[
     ~(
