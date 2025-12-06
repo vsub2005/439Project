@@ -38,6 +38,12 @@ df_cleaned = df_cleaned.dropna()
 # Make QUARTER values greater than 4 into value "OT"
 df_cleaned["QUARTER"] = df_cleaned["QUARTER"].apply(lambda x: x if x <= 4 else "OT")
 
+# Unify minutes and seconds left into single column SECS_LEFT_UNIFIED
+df_cleaned['SECS_LEFT_UNIFIED'] = df_cleaned['MINS_LEFT'] * 60 + df_cleaned['SECS_LEFT']
+
+# Drop the old columns
+df_cleaned = df_cleaned.drop(columns=['MINS_LEFT', 'SECS_LEFT'])
+
 # removed all rows with x or y values outside 0-50 range (mainly back court shots)
 df_cleaned = df_cleaned[
     ~(

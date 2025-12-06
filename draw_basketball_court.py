@@ -2,8 +2,7 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Rectangle, Arc
-from matplotlib.widgets import Button, Slider
-import matplotlib.patches as mpatches
+from matplotlib.widgets import Button, Slider, RangeSlider
 
 
 def draw_half_court(ax=None, line_color="black", lw=2):
@@ -180,6 +179,11 @@ class TeamSelector:
         self.df = df
         self.fig = fig
         self.ax = ax
+        
+        # Time settings
+        self.regulation_secs = 12 * 60   # 12:00
+        self.ot_secs = 5 * 60           # 5:00
+        self._current_time_max = self.regulation_secs
 
         # Get unique teams and add "All Teams" option
         self.teams = sorted(df["TEAM_NAME"].unique().tolist())
@@ -231,6 +235,9 @@ class TeamSelector:
         self.scatter = None
         self.cbar = None
         self.cbar_ax = None
+        
+        # Time slider instance (created later)
+        self.time_slider = None
 
         # Will store position after first colorbar creation
         self.stable_position = None
@@ -240,9 +247,30 @@ class TeamSelector:
 
         # Create year slider
         self.create_year_slider()
+        
+        # Create time-range slider (initially hidden)
+        self.create_time_slider()
 
         # Initial plot with default selections
         self.update_plot()
+    
+    def _format_secs_mmss(self, seconds: float) -> str:
+        """Format raw seconds (e.g., SECS_LEFT_UNIFIED) as MM:SS."""
+        seconds = max(0, min(self._current_time_max, float(seconds)))
+        m, s = divmod(int(seconds), 60)
+        return f"{m:02d}:{s:02d}"
+
+    def _update_time_slider_label(self, val):
+        """Update the slider's valtext as 'HIGH_TIME – LOW_TIME'."""
+        if self.time_slider is None or self.time_slider.valtext is None:
+            return
+
+        lo, hi = sorted(val)
+        hi_str = self._format_secs_mmss(hi)
+        lo_str = self._format_secs_mmss(lo)
+
+        # Swapped order -> "high – low"
+        self.time_slider.valtext.set_text(f"{hi_str} – {lo_str}")
 
     def create_dropdowns(self):
         """Create both the team and quarter dropdown menus."""
@@ -286,6 +314,64 @@ class TeamSelector:
         """Callback when the year slider is moved."""
         self.current_year = int(round(val))
         self.update_plot()
+        
+    # Time Range RangeSlider
+    def create_time_slider(self):
+        """Create the time-range slider axes once."""
+        # Axes under the Season slider
+        self.time_ax = plt.axes([0.1, 0.05, 0.8, 0.10])
+        self.time_slider = None
+
+        # Build it initially for regulation (12 minutes)
+        self._rebuild_time_slider(self.regulation_secs)
+
+        # Hidden by default when "All Quarters" is selected
+        self.time_slider.ax.set_visible(False)
+
+    def _rebuild_time_slider(self, max_seconds: float):
+        """(Re)build the RangeSlider for a given quarter length."""
+        self._current_time_max = max_seconds
+
+        # Clear the axes and recreate the slider in-place
+        self.time_ax.cla()
+        self.time_slider = RangeSlider(
+            ax=self.time_ax,
+            label="Time Range",
+            valmin=0.0,
+            valmax=max_seconds,
+            valinit=(0.0, max_seconds),
+        )
+        
+        self.time_slider.ax.invert_xaxis()  # So higher times (start of quarter) are left
+
+        # Set a nice initial label
+        self._update_time_slider_label(self.time_slider.val)
+
+        # Callback when user changes handles
+        def _on_time_change(val):
+            self._update_time_slider_label(val)
+            self.update_plot()  # re-filter and redraw
+
+        self.time_slider.on_changed(_on_time_change)
+    
+    def _update_time_slider_for_quarter(self):
+        """Ensure the time slider matches the current quarter selection."""
+        if self.time_slider is None:
+            return
+
+        # Decide max seconds based on quarter
+        if self.current_quarter == "OT":
+            target_max = self.ot_secs
+        else:
+            target_max = self.regulation_secs
+
+        # Rebuild slider if the max has changed (e.g., switching to/from OT)
+        if target_max != self._current_time_max:
+            self._rebuild_time_slider(target_max)
+
+        # Show only when not "All Quarters"
+        show_time = self.current_quarter != "All Quarters"
+        self.time_slider.ax.set_visible(show_time)
 
     
     def update_plot(self, team_name=None, quarter=None, position = None):
@@ -301,6 +387,16 @@ class TeamSelector:
             self.current_quarter = quarter
         if position is not None:
             self.current_position = position
+        
+        # Update the time slider config & visibility
+        if hasattr(self, "time_slider"):
+            self._update_time_slider_for_quarter()
+            
+        # Show/hide the time slider based on quarter selection
+        if self.time_slider is not None:
+            show_time = self.current_quarter != "All Quarters"
+            self.time_slider.ax.set_visible(show_time)
+        
         # Clear the main axis
         self.ax.clear()
 
@@ -310,18 +406,25 @@ class TeamSelector:
 
         draw_half_court(self.ax)
 
-        # Start from full dataframe and apply filters for both dropdowns
+        # Start from full dataframe
         filtered_df = self.df
 
         # Filter by team
         filtered_df = filtered_df[filtered_df["TEAM_NAME"] == self.current_team]
 
-        # Filter by quarter
+        # Filter by quarter + time range
         if self.current_quarter != "All Quarters":
-            # Compare as string
             filtered_df = filtered_df[
                 filtered_df["QUARTER"].astype(str) == self.current_quarter
             ]
+
+            # Apply time range using SECS_LEFT_UNIFIED
+            if self.time_slider is not None:
+                t_min, t_max = sorted(self.time_slider.val)
+                filtered_df = filtered_df[
+                    (filtered_df["SECS_LEFT_UNIFIED"] >= t_min)
+                    & (filtered_df["SECS_LEFT_UNIFIED"] <= t_max)
+                ]
         if self.current_position != "Positions":
             if self.current_position in filtered_df["POSITION_GROUP"].astype(str).unique():
                 filtered_df = filtered_df[filtered_df["POSITION_GROUP"].astype(str) == self.current_position]
@@ -393,7 +496,7 @@ class TeamSelector:
             if self.current_quarter == "All Quarters"
             else f"Quarter {self.current_quarter}"
         )
-        title_pos = ("Positions" if self.current_position == "Positions" else self.current_position)
+        title_pos = ("All Positions" if self.current_position == "Positions" else f"Position: {self.current_position}")
         title_season = f"Season {self.current_year}"
         self.ax.set_title(
             f"Shot Chart: {title_team} - {title_pos} - {title_quarter} - {title_season}",
@@ -413,8 +516,8 @@ def main():
     df = pd.read_csv(csv_path)
 
     # Create figure with extra space for dropdown at top
-    fig = plt.figure(figsize=(10, 7))
-    ax = plt.axes([0.1, 0.05, 0.8, 0.8])
+    fig = plt.figure(figsize=(12, 7))
+    ax = plt.axes([0.1, 0.15, 0.8, 0.75])
     
     # Initialize team selector
     selector = TeamSelector(df, fig, ax)
