@@ -53,6 +53,8 @@ df_cleaned = df_cleaned[
         (df_cleaned["LOC_Y"].abs() < 0)
     )
 ]
+df_cleaned = df_cleaned[~df_cleaned["SEASON_1"].isin([2020, 2021, 2022])]
+
 print("Cleaned dataset shape:", df_cleaned.shape)
 print(df_cleaned.head())
 print(df_cleaned.info())
