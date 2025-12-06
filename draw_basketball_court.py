@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Rectangle, Arc
-from matplotlib.widgets import Button
+from matplotlib.widgets import Button, Slider
 import matplotlib.patches as mpatches
 
 
@@ -191,6 +191,38 @@ class TeamSelector:
         #get all positions and position groups
         unique_positions = sorted(df["POSITION_GROUP"].unique().tolist()) + sorted(df["POSITION"].unique().tolist())
         self.positions = ["Positions"] + [str(q) for q in unique_positions]
+        
+        # Get available seasons
+        years = sorted(df["SEASON_1"].dropna().unique().tolist())
+        self.min_year = int(min(years))
+        self.max_year = int(max(years))
+        # Current season selection (will be controlled by the slider)
+        self.current_year = self.min_year
+        
+        # Precompute max shot count per (team, season) for bubble sizing
+        loc_counts = (
+            df.groupby(["TEAM_NAME", "SEASON_1", "LOC_X", "LOC_Y"])
+            .size()
+            .reset_index(name="count")
+        )
+        max_per_team_year = loc_counts.groupby(["TEAM_NAME", "SEASON_1"])["count"].max()
+        # Dict with keys like ("Los Angeles Lakers", 2012) -> max_count
+        self.max_count_by_team_year = max_per_team_year.to_dict()
+        
+        # Also precompute total number of shots per (team, season)
+        total_shots_per_team_year = (
+            df.groupby(["TEAM_NAME", "SEASON_1"])
+            .size()
+            .reset_index(name="total_shots")
+        )
+        # Dict with keys like ("Los Angeles Lakers", 2012) -> total_shots
+        self.total_shots_by_team_year = {
+            (row["TEAM_NAME"], int(row["SEASON_1"])): int(row["total_shots"])
+            for _, row in total_shots_per_team_year.iterrows()
+        }
+
+
+
         # Keep track of current selections so the two dropdowns
         # can work together
         self.current_team = self.teams[0]
@@ -205,6 +237,9 @@ class TeamSelector:
 
         # Create dropdowns
         self.create_dropdowns()
+
+        # Create year slider
+        self.create_year_slider()
 
         # Initial plot with default selections
         self.update_plot()
@@ -232,6 +267,27 @@ class TeamSelector:
             self.positions,
             lambda position: self.update_plot(position=position),
         )
+    
+    def create_year_slider(self):
+        """Create a slider to select the season (year)."""
+        # Slider axis near the bottom of the figure
+        ax_year = plt.axes([0.1, 0.01, 0.8, 0.03])
+        self.year_slider = Slider(
+            ax_year,
+            "Season",
+            self.min_year,
+            self.max_year,
+            valinit=self.current_year,
+            valstep=1,  # integer years only
+        )
+        self.year_slider.on_changed(self.on_year_change)
+
+    def on_year_change(self, val):
+        """Callback when the year slider is moved."""
+        self.current_year = int(round(val))
+        self.update_plot()
+
+    
     def update_plot(self, team_name=None, quarter=None, position = None):
         """Update the shot chart based on the selected team and quarter.
 
@@ -272,6 +328,10 @@ class TeamSelector:
             else:
                 filtered_df = filtered_df[filtered_df["POSITION"].astype(str) == self.current_position]
 
+        # Filter by season/year using the slider
+        filtered_df = filtered_df[filtered_df["SEASON_1"] == self.current_year]
+
+
         # Aggregate shots by (LOC_X, LOC_Y)
         grouped = (
             filtered_df.groupby(["LOC_X", "LOC_Y"])
@@ -288,10 +348,20 @@ class TeamSelector:
 
         # Scale counts into reasonable bubble sizes
         if len(grouped) > 0:
-            max_count = grouped["count"].max()
+            # Use total shots per (team, season) so sizing represents
+            # "fraction of that team's attempts that came from this spot"
+            key = (self.current_team, self.current_year)
+            total_shots = self.total_shots_by_team_year.get(key, grouped["count"].sum())
             min_size = 1
             max_size = 100
-            sizes = min_size + (grouped["count"] / max_count) * (max_size - min_size)
+            # Avoid division by zero just in case
+            if total_shots <= 0:
+                sizes = min_size
+            else:
+                # each size ∝ count / total_shots for that team-year
+                sizes = min_size + (grouped["count"] / total_shots) * (max_size - min_size)
+
+
 
             # Bubble chart
             self.scatter = self.ax.scatter(
@@ -324,12 +394,14 @@ class TeamSelector:
             else f"Quarter {self.current_quarter}"
         )
         title_pos = ("Positions" if self.current_position == "Positions" else self.current_position)
+        title_season = f"Season {self.current_year}"
         self.ax.set_title(
-            f"Shot Chart: {title_team} - {title_pos} - {title_quarter}",
+            f"Shot Chart: {title_team} - {title_pos} - {title_quarter} - {title_season}",
             fontsize=12,
             weight="bold",
             pad=30,
         )
+
         self.fig.canvas.draw_idle()
 
 
