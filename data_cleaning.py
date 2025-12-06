@@ -57,17 +57,27 @@ print("Cleaned dataset shape:", df_cleaned.shape)
 print(df_cleaned.head())
 print(df_cleaned.info())
 
-df_cleaned["X_ABS"] = df_cleaned["LOC_X"].abs()
+# Define 2×2 zones over the half court:
+# LOC_X is in  [-50, 50], LOC_Y is in  [0, 50]
+x_min, x_max = -50, 50
+y_min, y_max = 0, 50
+x_bin_width = 2
+y_bin_width = 2
 
-# Each interval of 2 in [0, 50] --- bin 0 to bin 24 in each direction
-df_cleaned["x_bin"] = (df_cleaned["X_ABS"] // 2).astype(int)
-df_cleaned["y_bin"] = (df_cleaned["LOC_Y"] // 2).astype(int)
+# Convert coordinates to bin indices
+df_cleaned["x_bin"] = ((df_cleaned["LOC_X"] - x_min) // x_bin_width).astype(int)
+df_cleaned["y_bin"] = ((df_cleaned["LOC_Y"] - y_min) // y_bin_width).astype(int)
 
-# ID each zone from 1 to 625
-df_cleaned["zone_id"] = (df_cleaned["x_bin"] * 25 + df_cleaned["y_bin"] + 1).astype(int)
+# Number of bins in each direction
+num_x_bins = int((x_max - x_min) / x_bin_width)   
+num_y_bins = int((y_max - y_min) / y_bin_width)
+
+# Unique zone id for each (x_bin, y_bin)
+df_cleaned["zone_id"] = (df_cleaned["x_bin"] * num_y_bins + df_cleaned["y_bin"] + 1).astype(int)
+
 
 print("Cleaned + zoned dataset shape:", df_cleaned.shape)
-print(df_cleaned[["LOC_X", "LOC_Y", "X_ABS", "x_bin", "y_bin", "zone_id"]].head())
+print(df_cleaned[["LOC_X", "LOC_Y", "x_bin", "y_bin", "zone_id"]].head())
 
 # Save final dataset with zones as CSV in repo root
 output_path = "clean_shots_with_zones.csv"

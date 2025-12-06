@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Rectangle, Arc
 from matplotlib.widgets import Button, Slider, RangeSlider
+import numpy as np
 
 
 def draw_half_court(ax=None, line_color="black", lw=2):
@@ -434,42 +435,43 @@ class TeamSelector:
         # Filter by season/year using the slider
         filtered_df = filtered_df[filtered_df["SEASON_1"] == self.current_year]
 
-
-        # Aggregate shots by (LOC_X, LOC_Y)
+        # Aggregate shots by 2×2 shot zones, using (x_bin, y_bin)
         grouped = (
-            filtered_df.groupby(["LOC_X", "LOC_Y"])
-            .size()
-            .reset_index(name="count")
+            filtered_df.groupby(["x_bin", "y_bin"])
+            .agg(
+                count=("SHOT_MADE", "size"),   # number of shots in this zone
+                fg=("SHOT_MADE", "mean"),      # FG% in this zone
+            )
+            .reset_index()
         )
 
-        fg = (
-            filtered_df.groupby(["LOC_X", "LOC_Y"])["SHOT_MADE"]
-            .mean()
-            .reset_index(name="fg")
-        )
-        grouped = grouped.merge(fg, on=["LOC_X", "LOC_Y"])
+        # Compute the actual center of each 2×2 zone in court coordinates
+        x_min, y_min = -50, 0
+        x_bin_width, y_bin_width = 2, 2
 
-        # Scale counts into reasonable bubble sizes
+        grouped["x"] = x_min + (grouped["x_bin"] + 0.5) * x_bin_width
+        grouped["y"] = y_min + (grouped["y_bin"] + 0.5) * y_bin_width
+
+
+        # Scale counts into bubble sizes based on raw shot counts per zone.
+        # Use a power > 1 to make high-frequency zones stand out more dramatically.
         if len(grouped) > 0:
-            # Use total shots per (team, season) so sizing represents
-            # "fraction of that team's attempts that came from this spot"
-            key = (self.current_team, self.current_year)
-            total_shots = self.total_shots_by_team_year.get(key, grouped["count"].sum())
-            min_size = 1
-            max_size = 100
-            # Avoid division by zero just in case
-            if total_shots <= 0:
-                sizes = min_size
-            else:
-                # each size ∝ count / total_shots for that team-year
-                sizes = min_size + (grouped["count"] / total_shots) * (max_size - min_size)
+            min_size = 20        # baseline bubble size
+            scale_factor = 40    
+
+            # sqrt(count) keeps things from exploding but still makes
+            sizes = min_size + np.sqrt(grouped["count"]) * scale_factor
+
+            # Cap for super high frequency
+            sizes = np.clip(sizes, min_size, 700)
 
 
 
-            # Bubble chart
+
+            # Bubble chart: one bubble per zone, plotted at the mean location of that zone
             self.scatter = self.ax.scatter(
-                grouped["LOC_X"],
-                grouped["LOC_Y"],
+                grouped["x"],
+                grouped["y"],
                 s=sizes,
                 c=grouped["fg"],
                 cmap="viridis",
