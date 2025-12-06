@@ -290,7 +290,7 @@ class TeamSelector:
         if len(grouped) > 0:
             max_count = grouped["count"].max()
             min_size = 1
-            max_size = 25
+            max_size = 100
             sizes = min_size + (grouped["count"] / max_count) * (max_size - min_size)
 
             # Bubble chart
