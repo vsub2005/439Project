@@ -182,7 +182,7 @@ class TeamSelector:
         self.ax = ax
 
         # Get unique teams and add "All Teams" option
-        self.teams = ["All Teams"] + sorted(df["TEAM_NAME"].unique().tolist())
+        self.teams = sorted(df["TEAM_NAME"].unique().tolist())
 
         # Get unique quarters and add "All Quarters" option
         unique_quarters = sorted(df["QUARTER"].dropna().unique().tolist())
@@ -193,7 +193,7 @@ class TeamSelector:
         self.positions = ["Positions"] + [str(q) for q in unique_positions]
         # Keep track of current selections so the two dropdowns
         # can work together
-        self.current_team = "All Teams"
+        self.current_team = self.teams[0]
         self.current_quarter = "All Quarters"
         self.current_position = "Positions"
         self.scatter = None
@@ -258,8 +258,7 @@ class TeamSelector:
         filtered_df = self.df
 
         # Filter by team
-        if self.current_team != "All Teams":
-            filtered_df = filtered_df[filtered_df["TEAM_NAME"] == self.current_team]
+        filtered_df = filtered_df[filtered_df["TEAM_NAME"] == self.current_team]
 
         # Filter by quarter
         if self.current_quarter != "All Quarters":
