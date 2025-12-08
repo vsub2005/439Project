@@ -14,6 +14,8 @@ This script:
 - Keeps only relevant columns.
 - Removes rows with missing values in the `POSITION` column.
 - Filters out any shots whose coordinates fall outside the half-court range.
+- Makes quarter values above 4 "OT" (overtime).
+- Combines minutes and seconds together into unified second values.
 - Computes:
   - `X_ABS` — absolute x-coordinate.
   - `x_bin` and `y_bin` — 2×2 grid zone bins.
@@ -27,7 +29,11 @@ This script:
 - Uses the same coordinate system as the dataset:
   - `LOC_X` ranges from **-50 to 50** (left → right)
   - `LOC_Y` ranges from **0 to 50** (baseline → half-court line)
-- Plots a bubble chart with bubbles sized based on shot frequency.
+- Creates a bubble plot, bubbles sized based on shot frequency within each zone, colored based on FG (Field Goal) Percentage.
+- Provides scales for bubble size and bubble color.
+- Creates dropdown menus for team, quarter, and position selection.
+- Creates sliders for season and time values (12:00-0:00 for regular quarters, 5:00-0:00 for overtime).
+- Creates a tooltip for each point, showing the top player for volume and accuracy (after a threshold is reached). 
 
 ### **3. `run_pipeline.py`**
 This script:
@@ -42,7 +48,7 @@ This script:
 Install dependencies:
 
 ```bash
-pip install kagglehub pandas matplotlib
+pip install kagglehub pandas matplotlib mplcursors
 ```
 
 ---
