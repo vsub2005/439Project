@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Rectangle, Arc
 from matplotlib.widgets import Button, Slider, RangeSlider
 import numpy as np
+import mplcursors
 
 
 def draw_half_court(ax=None, line_color="black", lw=2):
@@ -195,7 +196,7 @@ class TeamSelector:
         self.quarters = ["All Quarters"] + [str(q) for q in unique_quarters]
         #get all positions and position groups
         unique_positions = sorted(df["POSITION_GROUP"].unique().tolist()) + sorted(df["POSITION"].unique().tolist())
-        self.positions = ["Positions"] + [str(q) for q in unique_positions]
+        self.positions = ["All Positions"] + [str(q) for q in unique_positions]
         
         # Get available seasons
         years = sorted(df["SEASON_1"].dropna().unique().tolist())
@@ -232,7 +233,7 @@ class TeamSelector:
         # can work together
         self.current_team = self.teams[0]
         self.current_quarter = "All Quarters"
-        self.current_position = "Positions"
+        self.current_position = "All Positions"
         self.scatter = None
         self.cbar = None
         self.cbar_ax = None
@@ -426,7 +427,7 @@ class TeamSelector:
                     (filtered_df["SECS_LEFT_UNIFIED"] >= t_min)
                     & (filtered_df["SECS_LEFT_UNIFIED"] <= t_max)
                 ]
-        if self.current_position != "Positions":
+        if self.current_position != "All Positions":
             if self.current_position in filtered_df["POSITION_GROUP"].astype(str).unique():
                 filtered_df = filtered_df[filtered_df["POSITION_GROUP"].astype(str) == self.current_position]
             else:
@@ -444,7 +445,15 @@ class TeamSelector:
             )
             .reset_index()
         )
-
+        # Compute PLAYER stats inside each zone
+        player_groups = (
+            filtered_df.groupby(["x_bin", "y_bin", "PLAYER_NAME"])
+            .agg(
+                player_shots=("SHOT_MADE", "size"),
+                player_fg=("SHOT_MADE", "mean"),
+            )
+            .reset_index()
+        )
         # Compute the actual center of each 2×2 zone in court coordinates
         x_min, y_min = -50, 0
         x_bin_width, y_bin_width = 2, 2
@@ -452,6 +461,21 @@ class TeamSelector:
         grouped["x"] = x_min + (grouped["x_bin"] + 0.5) * x_bin_width
         grouped["y"] = y_min + (grouped["y_bin"] + 0.5) * y_bin_width
 
+        # Build lookup: best player by SHOT VOLUME in each zone
+        best_by_volume = (
+            player_groups.sort_values(["x_bin", "y_bin", "player_shots"], ascending=[True, True, False])
+            .groupby(["x_bin", "y_bin"])
+            .first()
+        )
+
+        # Build lookup: best player by FG% (with minimum 5 shots to avoid 1/1 noise)
+        min_shots = 5
+        best_by_fg = (
+            player_groups[player_groups["player_shots"] >= min_shots]
+            .sort_values(["x_bin", "y_bin", "player_fg"], ascending=[True, True, False])
+            .groupby(["x_bin", "y_bin"])
+            .first()
+        )
 
         # Scale counts into bubble sizes based on raw shot counts per zone.
         # Use a power > 1 to make high-frequency zones stand out more dramatically.
@@ -480,16 +504,81 @@ class TeamSelector:
                 vmin=0,
                 vmax=1,
             )
+        if hasattr(self, "cursor"):
+            self.cursor.remove()
 
-            # Create or update colorbar
-            if self.cbar is None:
-                self.cbar = plt.colorbar(self.scatter, ax=self.ax)
-                self.cbar.set_label("Field Goal Percentage (FG%)")
-                # Save the position AFTER colorbar creation
-                self.stable_position = self.ax.get_position()
+        self.cursor = mplcursors.cursor(self.scatter, hover=True)
+
+        @self.cursor.connect("add")
+        def on_hover(sel):
+            idx = sel.index
+            row = grouped.iloc[idx]
+
+            x_bin = row["x_bin"]
+            y_bin = row["y_bin"]
+
+            # Shots + FG% for this zone
+            total_shots = row["count"]
+            fg = row["fg"]
+
+            # Top player by volume
+            if (x_bin, y_bin) in best_by_volume.index:
+                bv = best_by_volume.loc[(x_bin, y_bin)]
+                top_vol_player = (bv["PLAYER_NAME"])
+                top_vol_shots = int(bv["player_shots"])
             else:
-                # Update existing colorbar with new data
-                self.cbar.update_normal(self.scatter)
+                top_vol_player = None
+                top_vol_shots = 0
+
+            # Top player by accuracy (min shot threshold)
+            if (x_bin, y_bin) in best_by_fg.index:
+                ba = best_by_fg.loc[(x_bin, y_bin)]
+                top_acc_player = (ba["PLAYER_NAME"])
+                top_acc_fg = float(ba["player_fg"])
+            else:
+                top_acc_player = None
+                top_acc_fg = None
+
+            # Build tooltip text
+            if top_vol_player is not None and top_acc_player is not None:
+                text = (
+                    f"Shots: {total_shots}\n"
+                    f"FG%: {fg:.2f}\n\n"
+                    f"Top Player (Volume): {top_vol_player}\n"
+                    f"  Shots: {top_vol_shots}\n\n"
+                    f"Top Player (Accuracy): {top_acc_player}\n"
+                )
+
+            elif top_vol_player is not None:
+                text = (
+                    f"Shots: {total_shots}\n"
+                    f"FG%: {fg:.2f}\n\n"
+                    f"Top Player (Volume): {top_vol_player}\n"
+                    f"  Shots: {top_vol_shots}\n\n"
+                )
+
+            else:
+                text = (
+                    f"Shots: {total_shots}\n"
+                    f"FG%: {fg:.2f}\n\n"
+                    f"No qualifying players.\n"
+                )
+
+            if top_acc_fg is not None:
+                text += f"  FG%: {top_acc_fg:.2f}"
+
+            sel.annotation.set_text(text)
+            sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
+# Create or update colorbar
+        if self.cbar is None:
+            self.cbar = plt.colorbar(self.scatter, ax=self.ax)
+            self.cbar.set_label("Field Goal Percentage (FG%)")
+            # Save the position AFTER colorbar creation
+            self.stable_position = self.ax.get_position()
+        else:
+            # Update existing colorbar with new data
+            self.cbar.update_normal(self.scatter)
+        
 
         # Build a descriptive title reflecting both filters
         title_team = self.current_team
