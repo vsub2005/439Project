@@ -187,56 +187,43 @@ class TeamSelector:
         self.ot_secs = 5 * 60           # 5:00
         self._current_time_max = self.regulation_secs
 
-        # Get unique teams and add "All Teams" option
+        # Get unique teams
         self.teams = sorted(df["TEAM_NAME"].unique().tolist())
 
         # Get unique quarters and add "All Quarters" option
         unique_quarters = sorted(df["QUARTER"].dropna().unique().tolist())
-        # Store quarter labels as strings for the dropdown
         self.quarters = ["All Quarters"] + [str(q) for q in unique_quarters]
-        #get all positions and position groups
-        unique_positions = sorted(df["POSITION_GROUP"].unique().tolist()) + sorted(df["POSITION"].unique().tolist())
+
+        # Get all positions and position groups
+        unique_positions = sorted(df["POSITION_GROUP"].unique().tolist()) + \
+                           sorted(df["POSITION"].unique().tolist())
         self.positions = ["All Positions"] + [str(q) for q in unique_positions]
         
         # Get available seasons
         years = sorted(df["SEASON_1"].dropna().unique().tolist())
         self.min_year = int(min(years))
         self.max_year = int(max(years))
-        # Current season selection (will be controlled by the slider)
         self.current_year = self.min_year
         
-        # Precompute max shot count per (team, season) for bubble sizing
-        loc_counts = (
-            df.groupby(["TEAM_NAME", "SEASON_1", "LOC_X", "LOC_Y"])
-            .size()
-            .reset_index(name="count")
-        )
-        max_per_team_year = loc_counts.groupby(["TEAM_NAME", "SEASON_1"])["count"].max()
-        # Dict with keys like ("Los Angeles Lakers", 2012) -> max_count
-        self.max_count_by_team_year = max_per_team_year.to_dict()
-        
-        # Also precompute total number of shots per (team, season)
+        # Precompute total number of shots per (team, season)
         total_shots_per_team_year = (
             df.groupby(["TEAM_NAME", "SEASON_1"])
             .size()
             .reset_index(name="total_shots")
         )
-        # Dict with keys like ("Los Angeles Lakers", 2012) -> total_shots
         self.total_shots_by_team_year = {
             (row["TEAM_NAME"], int(row["SEASON_1"])): int(row["total_shots"])
             for _, row in total_shots_per_team_year.iterrows()
         }
 
-
-
-        # Keep track of current selections so the two dropdowns
-        # can work together
+        # Current selections
         self.current_team = self.teams[0]
         self.current_quarter = "All Quarters"
         self.current_position = "All Positions"
         self.scatter = None
         self.cbar = None
         self.cbar_ax = None
+        self.size_legend = None 
         
         # Time slider instance (created later)
         self.time_slider = None
@@ -244,16 +231,10 @@ class TeamSelector:
         # Will store position after first colorbar creation
         self.stable_position = None
 
-        # Create dropdowns
+        # Create dropdowns, sliders, and initial plot
         self.create_dropdowns()
-
-        # Create year slider
         self.create_year_slider()
-        
-        # Create time-range slider (initially hidden)
         self.create_time_slider()
-
-        # Initial plot with default selections
         self.update_plot()
     
     def _format_secs_mmss(self, seconds: float) -> str:
@@ -270,13 +251,10 @@ class TeamSelector:
         lo, hi = sorted(val)
         hi_str = self._format_secs_mmss(hi)
         lo_str = self._format_secs_mmss(lo)
-
-        # Swapped order -> "high – low"
         self.time_slider.valtext.set_text(f"{hi_str} – {lo_str}")
 
     def create_dropdowns(self):
-        """Create both the team and quarter dropdown menus."""
-        # Team dropdown button position at top
+        """Create team, quarter, and position dropdown menus."""
         ax_team = plt.axes([0.05, 0.92, 0.25, 0.04])
         self.team_dropdown = DropdownMenu(
             ax_team,
@@ -284,13 +262,13 @@ class TeamSelector:
             lambda team_name: self.update_plot(team_name=team_name),
         )
 
-        # Quarter dropdown just below the team dropdown
         ax_quarter = plt.axes([0.35, 0.92, 0.25, 0.04])
         self.quarter_dropdown = DropdownMenu(
             ax_quarter,
             self.quarters,
             lambda quarter: self.update_plot(quarter=quarter),
         )
+
         ax_pos = plt.axes([0.65, 0.92, 0.25, 0.04])
         self.pos_dropdown = DropdownMenu(
             ax_pos,
@@ -300,7 +278,6 @@ class TeamSelector:
     
     def create_year_slider(self):
         """Create a slider to select the season (year)."""
-        # Slider axis near the bottom of the figure
         ax_year = plt.axes([0.1, 0.01, 0.8, 0.03])
         self.year_slider = Slider(
             ax_year,
@@ -308,33 +285,25 @@ class TeamSelector:
             self.min_year,
             self.max_year,
             valinit=self.current_year,
-            valstep=1,  # integer years only
+            valstep=1,
         )
         self.year_slider.on_changed(self.on_year_change)
 
     def on_year_change(self, val):
-        """Callback when the year slider is moved."""
         self.current_year = int(round(val))
         self.update_plot()
         
     # Time Range RangeSlider
     def create_time_slider(self):
         """Create the time-range slider axes once."""
-        # Axes under the Season slider
         self.time_ax = plt.axes([0.1, 0.05, 0.8, 0.10])
         self.time_slider = None
-
-        # Build it initially for regulation (12 minutes)
         self._rebuild_time_slider(self.regulation_secs)
-
-        # Hidden by default when "All Quarters" is selected
         self.time_slider.ax.set_visible(False)
 
     def _rebuild_time_slider(self, max_seconds: float):
         """(Re)build the RangeSlider for a given quarter length."""
         self._current_time_max = max_seconds
-
-        # Clear the axes and recreate the slider in-place
         self.time_ax.cla()
         self.time_slider = RangeSlider(
             ax=self.time_ax,
@@ -344,15 +313,12 @@ class TeamSelector:
             valinit=(0.0, max_seconds),
         )
         
-        self.time_slider.ax.invert_xaxis()  # So higher times (start of quarter) are left
-
-        # Set a nice initial label
+        self.time_slider.ax.invert_xaxis()
         self._update_time_slider_label(self.time_slider.val)
 
-        # Callback when user changes handles
         def _on_time_change(val):
             self._update_time_slider_label(val)
-            self.update_plot()  # re-filter and redraw
+            self.update_plot()
 
         self.time_slider.on_changed(_on_time_change)
     
@@ -361,28 +327,20 @@ class TeamSelector:
         if self.time_slider is None:
             return
 
-        # Decide max seconds based on quarter
         if self.current_quarter == "OT":
             target_max = self.ot_secs
         else:
             target_max = self.regulation_secs
 
-        # Rebuild slider if the max has changed (e.g., switching to/from OT)
         if target_max != self._current_time_max:
             self._rebuild_time_slider(target_max)
 
-        # Show only when not "All Quarters"
         show_time = self.current_quarter != "All Quarters"
         self.time_slider.ax.set_visible(show_time)
 
     
-    def update_plot(self, team_name=None, quarter=None, position = None):
-        """Update the shot chart based on the selected team and quarter.
-
-        Both dropdown menus call this function; whichever dropdown changes
-        passes its new value, and we keep the other setting unchanged.
-        """
-        # Update current selections if new values were provided
+    def update_plot(self, team_name=None, quarter=None, position=None):
+        """Update the shot chart based on current filters."""
         if team_name is not None:
             self.current_team = team_name
         if quarter is not None:
@@ -390,11 +348,9 @@ class TeamSelector:
         if position is not None:
             self.current_position = position
         
-        # Update the time slider config & visibility
         if hasattr(self, "time_slider"):
             self._update_time_slider_for_quarter()
             
-        # Show/hide the time slider based on quarter selection
         if self.time_slider is not None:
             show_time = self.current_quarter != "All Quarters"
             self.time_slider.ax.set_visible(show_time)
@@ -402,50 +358,52 @@ class TeamSelector:
         # Clear the main axis
         self.ax.clear()
 
-        # Restore stable position if we have one (after first colorbar creation)
         if self.stable_position is not None:
             self.ax.set_position(self.stable_position)
 
         draw_half_court(self.ax)
 
-        # Start from full dataframe
+        # Base filter
         filtered_df = self.df
-
-        # Filter by team
         filtered_df = filtered_df[filtered_df["TEAM_NAME"] == self.current_team]
 
-        # Filter by quarter + time range
+        # Quarter + time filtering
         if self.current_quarter != "All Quarters":
             filtered_df = filtered_df[
                 filtered_df["QUARTER"].astype(str) == self.current_quarter
             ]
-
-            # Apply time range using SECS_LEFT_UNIFIED
             if self.time_slider is not None:
                 t_min, t_max = sorted(self.time_slider.val)
                 filtered_df = filtered_df[
                     (filtered_df["SECS_LEFT_UNIFIED"] >= t_min)
                     & (filtered_df["SECS_LEFT_UNIFIED"] <= t_max)
                 ]
+
+        # Position filtering
         if self.current_position != "All Positions":
             if self.current_position in filtered_df["POSITION_GROUP"].astype(str).unique():
-                filtered_df = filtered_df[filtered_df["POSITION_GROUP"].astype(str) == self.current_position]
+                filtered_df = filtered_df[
+                    filtered_df["POSITION_GROUP"].astype(str) == self.current_position
+                ]
             else:
-                filtered_df = filtered_df[filtered_df["POSITION"].astype(str) == self.current_position]
+                filtered_df = filtered_df[
+                    filtered_df["POSITION"].astype(str) == self.current_position
+                ]
 
-        # Filter by season/year using the slider
+        # Season filtering
         filtered_df = filtered_df[filtered_df["SEASON_1"] == self.current_year]
 
-        # Aggregate shots by 2×2 shot zones, using (x_bin, y_bin)
+        # Aggregate by 2×2 shot zones
         grouped = (
             filtered_df.groupby(["x_bin", "y_bin"])
             .agg(
-                count=("SHOT_MADE", "size"),   # number of shots in this zone
-                fg=("SHOT_MADE", "mean"),      # FG% in this zone
+                count=("SHOT_MADE", "size"),
+                fg=("SHOT_MADE", "mean"),
             )
             .reset_index()
         )
-        # Compute PLAYER stats inside each zone
+
+        # Player-level stats per zone
         player_groups = (
             filtered_df.groupby(["x_bin", "y_bin", "PLAYER_NAME"])
             .agg(
@@ -454,45 +412,42 @@ class TeamSelector:
             )
             .reset_index()
         )
-        # Compute the actual center of each 2×2 zone in court coordinates
+
+        # Center of each 2×2 zone in court coordinates
         x_min, y_min = -50, 0
         x_bin_width, y_bin_width = 2, 2
-
         grouped["x"] = x_min + (grouped["x_bin"] + 0.5) * x_bin_width
         grouped["y"] = y_min + (grouped["y_bin"] + 0.5) * y_bin_width
 
-        # Build lookup: best player by SHOT VOLUME in each zone
+        # Top players per zone
         best_by_volume = (
-            player_groups.sort_values(["x_bin", "y_bin", "player_shots"], ascending=[True, True, False])
+            player_groups.sort_values(
+                ["x_bin", "y_bin", "player_shots"],
+                ascending=[True, True, False],
+            )
             .groupby(["x_bin", "y_bin"])
             .first()
         )
 
-        # Build lookup: best player by FG% (with minimum 5 shots to avoid 1/1 noise)
         min_shots = 5
         best_by_fg = (
             player_groups[player_groups["player_shots"] >= min_shots]
-            .sort_values(["x_bin", "y_bin", "player_fg"], ascending=[True, True, False])
+            .sort_values(
+                ["x_bin", "y_bin", "player_fg"],
+                ascending=[True, True, False],
+            )
             .groupby(["x_bin", "y_bin"])
             .first()
         )
 
-        # Scale counts into bubble sizes based on raw shot counts per zone.
-        # Use a power > 1 to make high-frequency zones stand out more dramatically.
+        # Bubble sizes (sqrt scaling)
+        min_size = 20
+        scale_factor = 40
+
         if len(grouped) > 0:
-            min_size = 20        # baseline bubble size
-            scale_factor = 40    
-
-            # sqrt(count) keeps things from exploding but still makes
             sizes = min_size + np.sqrt(grouped["count"]) * scale_factor
-
-            # Cap for super high frequency
             sizes = np.clip(sizes, min_size, 700)
 
-
-
-
-            # Bubble chart: one bubble per zone, plotted at the mean location of that zone
             self.scatter = self.ax.scatter(
                 grouped["x"],
                 grouped["y"],
@@ -504,97 +459,117 @@ class TeamSelector:
                 vmin=0,
                 vmax=1,
             )
+
+        # Tooltip with per-zone details
         if hasattr(self, "cursor"):
             self.cursor.remove()
 
-        self.cursor = mplcursors.cursor(self.scatter, hover=True)
+        if len(grouped) > 0:
+            self.cursor = mplcursors.cursor(self.scatter, hover=True)
 
-        @self.cursor.connect("add")
-        def on_hover(sel):
-            idx = sel.index
-            row = grouped.iloc[idx]
+            @self.cursor.connect("add")
+            def on_hover(sel):
+                idx = sel.index
+                row = grouped.iloc[idx]
+                x_bin = row["x_bin"]
+                y_bin = row["y_bin"]
+                total_shots = row["count"]
+                fg = row["fg"]
 
-            x_bin = row["x_bin"]
-            y_bin = row["y_bin"]
+                if (x_bin, y_bin) in best_by_volume.index:
+                    bv = best_by_volume.loc[(x_bin, y_bin)]
+                    top_vol_player = bv["PLAYER_NAME"]
+                    top_vol_shots = int(bv["player_shots"])
+                else:
+                    top_vol_player = None
+                    top_vol_shots = 0
 
-            # Shots + FG% for this zone
-            total_shots = row["count"]
-            fg = row["fg"]
+                if (x_bin, y_bin) in best_by_fg.index:
+                    ba = best_by_fg.loc[(x_bin, y_bin)]
+                    top_acc_player = ba["PLAYER_NAME"]
+                    top_acc_fg = float(ba["player_fg"])
+                else:
+                    top_acc_player = None
+                    top_acc_fg = None
 
-            # Top player by volume
-            if (x_bin, y_bin) in best_by_volume.index:
-                bv = best_by_volume.loc[(x_bin, y_bin)]
-                top_vol_player = (bv["PLAYER_NAME"])
-                top_vol_shots = int(bv["player_shots"])
+                if top_vol_player is not None and top_acc_player is not None:
+                    text = (
+                        f"Shots: {total_shots}\n"
+                        f"FG%: {fg:.2f}\n\n"
+                        f"Top Player (Volume): {top_vol_player}\n"
+                        f"  Shots: {top_vol_shots}\n\n"
+                        f"Top Player (Accuracy): {top_acc_player}\n"
+                    )
+                elif top_vol_player is not None:
+                    text = (
+                        f"Shots: {total_shots}\n"
+                        f"FG%: {fg:.2f}\n\n"
+                        f"Top Player (Volume): {top_vol_player}\n"
+                        f"  Shots: {top_vol_shots}\n\n"
+                    )
+                else:
+                    text = (
+                        f"Shots: {total_shots}\n"
+                        f"FG%: {fg:.2f}\n\n"
+                        f"No qualifying players.\n"
+                    )
+
+                if top_acc_fg is not None:
+                    text += f"  FG%: {top_acc_fg:.2f}"
+
+                sel.annotation.set_text(text)
+                sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
+
+        # Colorbar
+        if len(grouped) > 0:
+            if self.cbar is None:
+                self.cbar = plt.colorbar(self.scatter, ax=self.ax)
+                self.cbar.set_label("Field Goal Percentage (FG%)")
+                self.stable_position = self.ax.get_position()
             else:
-                top_vol_player = None
-                top_vol_shots = 0
+                self.cbar.update_normal(self.scatter)
 
-            # Top player by accuracy (min shot threshold)
-            if (x_bin, y_bin) in best_by_fg.index:
-                ba = best_by_fg.loc[(x_bin, y_bin)]
-                top_acc_player = (ba["PLAYER_NAME"])
-                top_acc_fg = float(ba["player_fg"])
+        # --- Bubble-size legend (shots per zone) ---
+        if len(grouped) > 0:
+            # Use quantiles instead of min/max so labels are more interpretable
+            counts = grouped["count"].values
+            if counts.size == 1:
+                ref_counts = np.array([int(counts[0])])
             else:
-                top_acc_player = None
-                top_acc_fg = None
+                # 25th, 50th, 90th percentile
+                q = np.quantile(counts, [0.25, 0.5, 0.9])
+                ref_counts = np.unique(q.round().astype(int))
+                ref_counts = ref_counts[ref_counts > 0]  # no zero-shot labels
+                if ref_counts.size == 0:
+                    ref_counts = np.array([int(counts.max())])
 
-            # Build tooltip text
-            if top_vol_player is not None and top_acc_player is not None:
-                text = (
-                    f"Shots: {total_shots}\n"
-                    f"FG%: {fg:.2f}\n\n"
-                    f"Top Player (Volume): {top_vol_player}\n"
-                    f"  Shots: {top_vol_shots}\n\n"
-                    f"Top Player (Accuracy): {top_acc_player}\n"
+            # Compute legend bubble sizes using the exact same formula
+            ref_sizes = min_size + np.sqrt(ref_counts) * scale_factor
+            ref_sizes = np.clip(ref_sizes, min_size, 700)
+
+            # Remove previous legend if it exists
+            if self.size_legend is not None:
+                self.size_legend.remove()
+                self.size_legend = None
+
+            # Create dummy scatter handles so legend bubbles use the same 's'
+            handles = [
+                self.ax.scatter(
+                    [], [], s=s, color="gray", alpha=0.7, edgecolor="gray"
                 )
+                for s in ref_sizes
+            ]
+            labels = [f"{c} shots" for c in ref_counts]
 
-            elif top_vol_player is not None:
-                text = (
-                    f"Shots: {total_shots}\n"
-                    f"FG%: {fg:.2f}\n\n"
-                    f"Top Player (Volume): {top_vol_player}\n"
-                    f"  Shots: {top_vol_shots}\n\n"
-                )
+            self.size_legend = self.ax.legend(
+                handles,
+                labels,
+                title="Shots in Zone",
+                loc="upper right",
+                bbox_to_anchor=(1.32, 1.00),
+                frameon=True,
+            )
 
-            else:
-                text = (
-                    f"Shots: {total_shots}\n"
-                    f"FG%: {fg:.2f}\n\n"
-                    f"No qualifying players.\n"
-                )
-
-            if top_acc_fg is not None:
-                text += f"  FG%: {top_acc_fg:.2f}"
-
-            sel.annotation.set_text(text)
-            sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
-# Create or update colorbar
-        if self.cbar is None:
-            self.cbar = plt.colorbar(self.scatter, ax=self.ax)
-            self.cbar.set_label("Field Goal Percentage (FG%)")
-            # Save the position AFTER colorbar creation
-            self.stable_position = self.ax.get_position()
-        else:
-            # Update existing colorbar with new data
-            self.cbar.update_normal(self.scatter)
-        
-
-        # Build a descriptive title reflecting both filters
-        title_team = self.current_team
-        title_quarter = (
-            "All Quarters"
-            if self.current_quarter == "All Quarters"
-            else f"Quarter {self.current_quarter}"
-        )
-        title_pos = ("All Positions" if self.current_position == "Positions" else f"Position: {self.current_position}")
-        title_season = f"Season {self.current_year}"
-        self.ax.set_title(
-            f"Shot Chart: {title_team} - {title_pos} - {title_quarter} - {title_season}",
-            fontsize=12,
-            weight="bold",
-            pad=30,
-        )
 
         self.fig.canvas.draw_idle()
 
@@ -603,14 +578,11 @@ def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     csv_path = os.path.join(base_dir, "clean_shots_with_zones.csv")
 
-    # Load cleaned data
     df = pd.read_csv(csv_path)
 
-    # Create figure with extra space for dropdown at top
     fig = plt.figure(figsize=(12, 7))
     ax = plt.axes([0.1, 0.15, 0.8, 0.75])
     
-    # Initialize team selector
     selector = TeamSelector(df, fig, ax)
     
     plt.show()
@@ -618,4 +590,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
